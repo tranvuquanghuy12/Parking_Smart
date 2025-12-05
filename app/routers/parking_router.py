@@ -1,36 +1,38 @@
+# app/routers/parking_router.py
+
 from fastapi import APIRouter, Body
+# CHÚ Ý: Đảm bảo ParkingUserResponse đã được import từ schemas
 from app.schemas.parking_schema import SlotUpdate, SlotResponse, ParkingUserCreate, ParkingUserResponse, TransactionRequest
 from app.services.parking_service import ParkingService
 
+# Khởi tạo Router
 router = APIRouter(tags=["Parking System"])
 
-# API cập nhật chỗ đỗ (Cho ESP32)
+# --- API SLOT (IoT) ---
+
 @router.post("/slot/update")
 async def update_slot(slot: SlotUpdate):
+    """API cho thiết bị IoT gửi trạng thái đỗ xe"""
     return await ParkingService.update_slot(slot)
 
-# API lấy danh sách chỗ (Cho Dashboard)
 @router.get("/slots", response_model=list[SlotResponse])
 async def get_slots():
+    """Lấy danh sách trạng thái chỗ đỗ (Cho Dashboard)"""
     return await ParkingService.get_all_slots()
 
-# API tạo khách hàng
+# --- API USER (Admin) ---
+
 @router.post("/users/create", response_model=ParkingUserResponse)
 async def create_user(user: ParkingUserCreate):
+    """Tạo khách hàng mới (Kiểm tra trùng biển số)"""
     return await ParkingService.create_user(user)
 
-# API danh sách khách hàng
-@router.get("/users")
+@router.get("/users", response_model=list[ParkingUserResponse]) # <--- FIX Ở ĐÂY: ÉP Pydantic VALIDATE DỮ LIỆU
 async def get_users():
-    # Logic lấy user đơn giản nên viết thẳng ở đây cũng đc, hoặc chuyển qua Service
-    from app.database import user_collection
-    users = []
-    async for u in user_collection.find():
-        u["id"] = str(u["_id"])
-        users.append(u)
-    return users
+    """Lấy danh sách tất cả khách hàng (Cho Admin Panel)"""
+    return await ParkingService.get_all_users()
 
-# API giao dịch tiền
 @router.post("/users/transaction")
 async def transaction(req: TransactionRequest, type: str = "add"):
+    """Xử lý nạp tiền (add) và thu phí (deduct)"""
     return await ParkingService.process_transaction(req.plate_number, req.amount, type)

@@ -46,30 +46,43 @@
 <script>
     // --- LOAD DANH SÁCH USER ---
     async function loadUsers() {
-        try {
-            const res = await fetch('/users');
-            const users = await res.json();
-            const tbody = document.getElementById('user-table');
-            tbody.innerHTML = '';
+ try {
+ const res = await fetch('/users');
+ const responseData = await res.json(); // Nhận toàn bộ response JSON
+            
+            // KIỂM TRA ĐỊNH DẠNG: Nếu có trường 'data' (do FastAPI bọc), thì lấy users từ đó.
+            // Nếu không có 'data' (trả về list sạch), thì lấy nguyên cái list.
+            const userList = responseData.data || responseData;
 
-            users.forEach(u => {
-                const row = `
-                    <tr>
-                        <td class="fw-bold">${u.fullname}</td>
-                        <td><span class="badge bg-secondary fs-6">${u.plate_number}</span></td>
-                        <td class="text-success fw-bold">${u.balance.toLocaleString()} VNĐ</td>
-                        <td>
-                            <button class="btn btn-sm btn-primary me-1" onclick="transact('${u.plate_number}', 'add')">💵 Nạp Tiền</button>
-                            <button class="btn btn-sm btn-danger" onclick="transact('${u.plate_number}', 'deduct')">💸 Thu Phí</button>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += row;
+ const tbody = document.getElementById('user-table');
+ tbody.innerHTML = '';
+            
+            // Đảm bảo là mảng trước khi dùng forEach (bắt lỗi Type Error)
+            if (!Array.isArray(userList)) {
+                 console.error("Lỗi: Dữ liệu trả về không phải là danh sách hợp lệ.", responseData);
+                 tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger fw-bold">❌ Lỗi: Server trả về dữ liệu sai cấu trúc.</td></tr>';
+                 return;
+            }
+
+            userList.forEach(u => {
+                            // ... code vẽ bảng giữ nguyên ...
+            const row = `
+            <tr>
+            <td class="fw-bold">${u.fullname}</td>
+            <td><span class="badge bg-secondary fs-6">${u.plate_number}</span></td>
+            <td class="text-success fw-bold">${u.balance.toLocaleString()} VNĐ</td>
+            <td>
+            <button class="btn btn-sm btn-primary me-1" onclick="transact('${u.plate_number}', 'add')">💵 Nạp Tiền</button>
+            <button class="btn btn-sm btn-danger" onclick="transact('${u.plate_number}', 'deduct')">💸 Thu Phí</button>
+            </td>
+            </tr>
+            `;
+            tbody.innerHTML += row;
             });
-        } catch (e) {
+            } catch (e) {
             console.error(e);
-        }
-    }
+            }
+            }
 
     // --- TẠO USER MỚI ---
     async function createUser() {
@@ -123,6 +136,39 @@
         }
     }
 
+    // --- GIAO DỊCH 2: THU PHÍ (TÍNH THEO GIỜ/NGÀY) ---
+    async function transactExit(plate) {
+        const { value: hours } = await Swal.fire({
+            title: `Thu Phí Xe ${plate} | Nhập Tổng Thời Gian Đỗ:`,
+            input: 'number',
+            inputLabel: 'Số giờ đỗ thực tế (Ví dụ: 25.5)',
+            showCancelButton: true
+        });
+
+        if (hours) {
+            // Gửi số giờ đỗ lên Backend để nó tự tính tiền và trừ
+            const res = await fetch(`/users/transaction?type=deduct`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                // TRUYỀN THỜI GIAN ĐỖ LÊN (duraton_hours)
+                body: JSON.stringify({ plate_number: plate, duration_hours: parseFloat(hours) }) 
+            });
+            
+            if(res.ok) {
+                const result = await res.json();
+                const fee = result.fee_charged.toLocaleString();
+                const days = result.days_parked;
+                
+                Swal.fire('Thu Phí Thành Công!', 
+                          `Phí phải trả: ${fee} VNĐ (Đã trừ ${days} ngày)`, 
+                          'success');
+                loadUsers();
+            } else {
+                const err = await res.json();
+                Swal.fire('Thất Bại!', err.detail, 'error');
+            }
+        }
+    }
     // Chạy khi vào trang
     loadUsers();
 </script>
